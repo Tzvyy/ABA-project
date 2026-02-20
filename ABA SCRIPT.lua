@@ -8,6 +8,7 @@ local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local Camera = Workspace.CurrentCamera
 
 -- Janela Principal
@@ -32,6 +33,7 @@ local Options = Fluent.Options
 -- Variáveis de controle persistentes
 local status_nanami = false
 local status_camera = false
+local status_kokushibo = false
 local camera_lock = false
 local Target = nil
 local TweenConnection = nil
@@ -45,38 +47,77 @@ FOVCircle.Transparency = 0.5
 FOVCircle.Color = Color3.fromRGB(255, 255, 255)
 
 -- ============================================================================
---                 FUNÇÃO DE CLIQUE SEGURO (CANTO DA TELA 0,0)
+--                 FUNÇÕES DE CLIQUE SEGURO (CANTO DA TELA 0,0)
 -- ============================================================================
-local function realizarCliqueSeguro()
-    -- Enviando o clique para a coordenada 0,0 (fora da área comum de botões da UI)
+
+local function clicarM1()
     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
     task.wait(0.01)
     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
 end
 
+local function clicarM2()
+    -- 1 = MouseButton2 (Direito)
+    VirtualInputManager:SendMouseButtonEvent(0, 0, 1, true, game, 0)
+    task.wait(0.05) 
+    VirtualInputManager:SendMouseButtonEvent(0, 0, 1, false, game, 0)
+end
+
 -- ============================================================================
---                 LÓGICA AUTO CAMERA TIMING
+--                 LÓGICA AUTO KOKUSHIBO (M2)
 -- ============================================================================
 
-Camera:GetPropertyChangedSignal("FieldOfView"):Connect(function()
-    if not status_camera then 
-        camera_lock = false 
-        return 
-    end
+local function processarKokushibo(gui)
+    local jaClicou = false
     
-    local fov = Camera.FieldOfView
-    if fov <= 10 then 
-        camera_lock = true 
+    local function checar(obj)
+        if status_kokushibo and obj.Name == "ImageLabel" and not jaClicou then
+            jaClicou = true
+            task.wait(0.30) -- Seu timing de 0.30 segundos
+            clicarM2()
+        end
     end
-    
-    if camera_lock and fov >= 15 then
-        camera_lock = false
-        realizarCliqueSeguro()
+
+    -- Varre o que já nasceu com a GUI
+    for _, desc in pairs(gui:GetDescendants()) do
+        checar(desc)
+    end
+
+    -- Monitora novas luas entrando
+    local conn
+    conn = gui.DescendantAdded:Connect(checar)
+
+    gui.AncestryChanged:Connect(function()
+        if not gui.Parent and conn then
+            conn:Disconnect()
+        end
+    end)
+end
+
+PlayerGui.ChildAdded:Connect(function(child)
+    if child.Name == "FrenchKokushibo" then
+        processarKokushibo(child)
     end
 end)
 
 -- ============================================================================
---                 LÓGICA AUTO NANAMI
+--                 LÓGICA AUTO CAMERA TIMING (M1)
+-- ============================================================================
+
+Camera:GetPropertyChangedSignal("FieldOfView"):Connect(function()
+    if not status_camera then camera_lock = false return end
+    
+    local fov = Camera.FieldOfView
+    if fov <= 10 then camera_lock = true end
+    
+    if camera_lock and fov >= 15 then
+        camera_lock = false
+        clicarM1()
+    end
+end)
+
+-- ============================================================================
+--                 LÓGICA AUTO NANAMI (M1)
 -- ============================================================================
 
 local function handleNanami(gui)
@@ -96,7 +137,7 @@ local function handleNanami(gui)
         local gpos = g.AbsolutePosition.X + (g.AbsoluteSize.X / 2)
         local cpos = c.AbsolutePosition.X
         if cpos > 10 and cpos >= gpos + 1 then
-            realizarCliqueSeguro()
+            clicarM1()
             connection:Disconnect()
         end
     end)
@@ -206,15 +247,9 @@ Tabs.Tween:AddSlider("Height", {Title = "Altura", Min = -5, Max = 10, Default = 
 Tabs.Tween:AddSlider("Offset", {Title = "Offset", Min = -5, Max = 5, Default = 0.2, Rounding = 1})
 
 -- TOGGLES DE QTE
-local NanamiToggle = Tabs.AutoQTE:AddToggle("Nanami_Coords", {Title = "Auto Nanami", Default = false})
-NanamiToggle:OnChanged(function()
-    status_nanami = NanamiToggle.Value
-end)
-
-local CameraToggle = Tabs.AutoQTE:AddToggle("Camera_Coords", {Title = "Auto Camera Timing", Default = false})
-CameraToggle:OnChanged(function()
-    status_camera = CameraToggle.Value
-end)
+Tabs.AutoQTE:AddToggle("Nanami_Tgl", {Title = "Auto Nanami", Default = false}):OnChanged(function(v) status_nanami = v end)
+Tabs.AutoQTE:AddToggle("Koku_Tgl", {Title = "Auto Kokushibo", Default = false}):OnChanged(function(v) status_kokushibo = v end)
+Tabs.AutoQTE:AddToggle("Camera_Tgl", {Title = "Auto Camera Timing", Default = false}):OnChanged(function(v) status_camera = v end)
 
 -- Render do FOV
 RunService.RenderStepped:Connect(function()
