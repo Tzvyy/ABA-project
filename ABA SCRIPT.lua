@@ -24,7 +24,7 @@ local Window = Fluent:CreateWindow({
 
 local Tabs = {
     Tween = Window:AddTab({ Title = "Tween", Icon = "target" }),
-    AutoQTE = Window:AddTab({ Title = "Auto QTE", Icon = "zap" }),
+    AutoQTE = Window:AddTab({ Title = "Auto QTE", Icon = "activity" }),
     Esp = Window:AddTab({ Title = "Esp", Icon = "eye" }),
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
