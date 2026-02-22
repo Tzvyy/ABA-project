@@ -49,7 +49,7 @@ FOVCircle.Transparency = 0.5
 FOVCircle.Color = Color3.fromRGB(255, 255, 255)
 
 -- ============================================================================
---                 LÓGICA ESP MODO (ABAIXO E MAIOR)
+--                 LÓGICA ESP MODO (FIX % DINÂMICO)
 -- ============================================================================
 
 local function criarEspModo(player)
@@ -63,7 +63,7 @@ local function criarEspModo(player)
         bill.Name = "ModeEsp_Josepi"
         bill.Adornee = root 
         bill.Size = UDim2.new(0, 150, 0, 70)
-        bill.StudsOffset = Vector3.new(0, -4.5, 0) -- Embaixo do player
+        bill.StudsOffset = Vector3.new(0, -4.5, 0)
         bill.AlwaysOnTop = true
         
         local label = Instance.new("TextLabel")
@@ -71,7 +71,7 @@ local function criarEspModo(player)
         label.BackgroundTransparency = 1
         label.Size = UDim2.new(1, 0, 1, 0)
         label.Font = Enum.Font.SourceSansBold
-        label.TextSize = 25 -- Texto maior
+        label.TextSize = 25
         label.TextColor3 = Color3.fromRGB(255, 255, 255)
         label.TextStrokeTransparency = 0
         label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
@@ -80,15 +80,27 @@ local function criarEspModo(player)
 
         local chargeValue = player:WaitForChild("Charge", 10)
         
+        -- FIX: O máximo começa em 325 mas se ajusta se o boneco tiver mais
+        local maxChargeDetectado = 325
+        
         local function atualizar()
             if not status_esp_mode then 
                 bill.Enabled = false 
                 return 
             end
             bill.Enabled = true
+            
             if chargeValue then
-                local percent = math.floor((chargeValue.Value / 325) * 100)
+                local valorAtual = chargeValue.Value
+                
+                -- Se o valor atual for maior que o máximo que conhecemos, atualizamos o limite
+                if valorAtual > maxChargeDetectado then
+                    maxChargeDetectado = valorAtual
+                end
+
+                local percent = math.floor((valorAtual / maxChargeDetectado) * 100)
                 label.Text = percent .. "%"
+                
                 if percent >= 90 then 
                     label.TextColor3 = Color3.fromRGB(255, 50, 50) 
                 else 
