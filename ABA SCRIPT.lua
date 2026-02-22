@@ -280,7 +280,7 @@ Tabs.AutoQTE:AddToggle("Nanami_Tgl", {Title = "Auto Nanami", Default = false}):O
 Tabs.AutoQTE:AddToggle("Koku_Tgl", {Title = "Auto Kokushibo", Default = false}):OnChanged(function(v) status_kokushibo = v end)
 Tabs.AutoQTE:AddToggle("Camera_Tgl", {Title = "Auto Camera Timing", Default = false}):OnChanged(function(v) status_camera = v end)
 
-Tabs.Esp:AddToggle("EspModeTgl", {Title = "Mostrar Porcentagem de Modo", Default = false}):OnChanged(function(v)
+Tabs.Esp:AddToggle("EspModeTgl", {Title = "Show Mode %", Default = false}):OnChanged(function(v)
     status_esp_mode = v
 end)
 
@@ -298,4 +298,3 @@ InterfaceManager:BuildInterfaceSection(Tabs.Settings)
 SaveManager:BuildConfigSection(Tabs.Settings)
 
 Window:SelectTab(1)
-
