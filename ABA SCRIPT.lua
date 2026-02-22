@@ -277,8 +277,8 @@ Tabs.Tween:AddSlider("Height", {Title = "Altura", Min = -5, Max = 10, Default = 
 Tabs.Tween:AddSlider("Offset", {Title = "Offset", Min = -5, Max = 5, Default = 0.2, Rounding = 1})
 
 Tabs.AutoQTE:AddToggle("Nanami_Tgl", {Title = "Auto Nanami", Default = false}):OnChanged(function(v) status_nanami = v end)
-Tabs.AutoQTE:AddToggle("Camera_Tgl", {Title = "Auto Camera Timing", Default = false}):OnChanged(function(v) status_camera = v end)
 Tabs.AutoQTE:AddToggle("Koku_Tgl", {Title = "Auto Kokushibo", Default = false}):OnChanged(function(v) status_kokushibo = v end)
+Tabs.AutoQTE:AddToggle("Camera_Tgl", {Title = "Auto Camera Timing", Default = false}):OnChanged(function(v) status_camera = v end)
 
 Tabs.Esp:AddToggle("EspModeTgl", {Title = "Mostrar Porcentagem de Modo", Default = false}):OnChanged(function(v)
     status_esp_mode = v
@@ -298,3 +298,4 @@ InterfaceManager:BuildInterfaceSection(Tabs.Settings)
 SaveManager:BuildConfigSection(Tabs.Settings)
 
 Window:SelectTab(1)
+
