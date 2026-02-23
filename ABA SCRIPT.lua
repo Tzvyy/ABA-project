@@ -37,6 +37,7 @@ local status_nanami = false
 local status_camera = false
 local status_kokushibo = false
 local status_esp_mode = false
+local status_bar_mode = false
 local cam_lock_enabled = false
 local camera_lock_timing = false
 local Target = nil
@@ -58,7 +59,74 @@ CamLockFOVCircle.Transparency = 0.5
 CamLockFOVCircle.Color = Color3.fromRGB(255, 50, 50)
 
 -- ============================================================================
---                 LÓGICA ESP MODO
+--                   LÓGICA DA BARRA (FIXED SIZE & OFFSET)
+-- ============================================================================
+
+local function criarBarraEstiloFinal(model)
+    if not status_bar_mode then return end
+    local player = Players:GetPlayerFromCharacter(model)
+    if not player or player == LocalPlayer then return end
+    local root = model:WaitForChild("HumanoidRootPart", 10)
+    if not root or root:FindFirstChild("ModeBar_Refined") then return end
+
+    local bill = Instance.new("BillboardGui", root)
+    bill.Name = "ModeBar_Refined"
+    bill.Size = UDim2.new(0, 130, 0, 12)
+    bill.StudsOffset = Vector3.new(0, -3.8, 0)
+    bill.AlwaysOnTop = true
+    bill.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+    local mainFrame = Instance.new("Frame", bill)
+    mainFrame.Size = UDim2.new(1, 0, 1, 0)
+    mainFrame.BackgroundTransparency = 1 
+    mainFrame.ZIndex = 1 
+    
+    local stroke = Instance.new("UIStroke", mainFrame)
+    stroke.Thickness = 2
+    stroke.Color = Color3.fromRGB(20, 20, 20)
+
+    local fillContainer = Instance.new("Frame", mainFrame)
+    fillContainer.Size = UDim2.new(0, 0, 1, 0)
+    fillContainer.BackgroundTransparency = 1
+    fillContainer.ClipsDescendants = true
+    fillContainer.ZIndex = 1
+
+    local topFill = Instance.new("Frame", fillContainer)
+    topFill.Size = UDim2.new(0, 130, 0.65, 0)
+    topFill.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    topFill.BorderSizePixel = 0
+
+    local bottomFill = Instance.new("Frame", fillContainer)
+    bottomFill.Size = UDim2.new(0, 130, 0.35, 0)
+    bottomFill.Position = UDim2.new(0, 0, 0.65, 0)
+    bottomFill.BackgroundColor3 = Color3.fromRGB(130, 20, 40)
+    bottomFill.BorderSizePixel = 0
+
+    for i = 1, 9 do
+        local lineWidth = 1.5
+        local divGroup = Instance.new("Frame", mainFrame)
+        divGroup.Size = UDim2.new(0, lineWidth, 0.88, 0) 
+        divGroup.Position = UDim2.new(i * 0.1, -(lineWidth/2), 0.06, 0)
+        divGroup.BackgroundTransparency = 1
+        divGroup.ZIndex = 2
+        local b1 = Instance.new("Frame", divGroup); b1.Size = UDim2.new(1, 0, 0.15, 0); b1.BackgroundColor3 = Color3.fromRGB(25, 25, 25); b1.BorderSizePixel = 0
+        local b2 = Instance.new("Frame", divGroup); b2.Size = UDim2.new(1, 0, 0.6, 0); b2.Position = UDim2.new(0, 0, 0.2, 0); b2.BackgroundColor3 = Color3.fromRGB(25, 25, 25); b2.BorderSizePixel = 0
+        local b3 = Instance.new("Frame", divGroup); b3.Size = UDim2.new(1, 0, 0.15, 0); b3.Position = UDim2.new(0, 0, 0.85, 0); b3.BackgroundColor3 = Color3.fromRGB(25, 25, 25); b3.BorderSizePixel = 0
+    end
+
+    local chargeValue = player:WaitForChild("Charge", 10)
+    local function atualizar()
+        if chargeValue and bill.Parent then
+            local maxCharge = (chargeValue.Value > 100) and 325 or 100
+            local percent = math.clamp(chargeValue.Value / maxCharge, 0, 1)
+            fillContainer:TweenSize(UDim2.new(percent, 0, 1, 0), "Out", "Quad", 0.3, true)
+        end
+    end
+    if chargeValue then chargeValue.Changed:Connect(atualizar) atualizar() end
+end
+
+-- ============================================================================
+--                   LÓGICA ESP MODO (NÚMERO %)
 -- ============================================================================
 
 local function criarEspModo(player)
@@ -68,22 +136,25 @@ local function criarEspModo(player)
         if not root then return end
         local bill = Instance.new("BillboardGui", root)
         bill.Name = "ModeEsp_Josepi"
-        bill.Size = UDim2.new(0, 150, 0, 70)
-        bill.StudsOffset = Vector3.new(0, -4.5, 0)
+        bill.Size = UDim2.new(0, 100, 0, 40)
+        bill.StudsOffset = Vector3.new(0, -5.2, 0) -- Abaixo da barra
         bill.AlwaysOnTop = true
+        bill.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        
         local label = Instance.new("TextLabel", bill)
         label.BackgroundTransparency = 1
         label.Size = UDim2.new(1, 0, 1, 0)
         label.Font = Enum.Font.SourceSansBold
-        label.TextSize = 25
+        label.TextSize = 22
         label.TextColor3 = Color3.fromRGB(255, 255, 255)
         label.TextStrokeTransparency = 0
+        label.ZIndex = 5
+
         local chargeValue = player:WaitForChild("Charge", 10)
         local maxChargeDetectado = 325
         local function atualizar()
-            if not status_esp_mode then bill.Enabled = false return end
-            bill.Enabled = true
-            if chargeValue then
+            bill.Enabled = status_esp_mode
+            if chargeValue and status_esp_mode then
                 if chargeValue.Value > maxChargeDetectado then maxChargeDetectado = chargeValue.Value end
                 local percent = math.floor((chargeValue.Value / maxChargeDetectado) * 100)
                 label.Text = percent .. "%"
@@ -102,7 +173,7 @@ for _, p in pairs(Players:GetPlayers()) do criarEspModo(p) end
 Players.PlayerAdded:Connect(criarEspModo)
 
 -- ============================================================================
---                 AUTO QTEs
+--                   AUTO QTEs (RESTORED)
 -- ============================================================================
 
 local function clicarM1()
@@ -168,7 +239,7 @@ Workspace.Live.DescendantAdded:Connect(function(obj)
 end)
 
 -- ============================================================================
---                 SISTEMA DE TWEEN (LÓGICA ORIGINAL RESTAURADA)
+--                   SISTEMAS TWEEN & RAGE (RESTORED)
 -- ============================================================================
 
 local function getTarget()
@@ -238,10 +309,6 @@ local function startTweenLoop()
     end)
 end
 
--- ============================================================================
---                 SISTEMA RAGE (CAMERA LOCK COM SMOOTH EXPONENCIAL)
--- ============================================================================
-
 local function getCamLockTarget()
     local closestTarget = nil
     local shortestDistance = math.huge
@@ -278,31 +345,18 @@ local function getCamLockTarget()
 end
 
 -- ============================================================================
---                               INTERFACE
+--                                INTERFACE (FLUENT)
 -- ============================================================================
 
 -- RAGE
-Tabs.Rage:AddKeybind("CamLockBind", {
-    Title = "Camera Lock Keybind",
-    Mode = "Toggle",
-    Default = "",
-    Callback = function(Value) cam_lock_enabled = Value end
-})
+Tabs.Rage:AddKeybind("CamLockBind", { Title = "Camera Lock Keybind", Mode = "Toggle", Default = "", Callback = function(Value) cam_lock_enabled = Value end })
 Tabs.Rage:AddToggle("ShowCamLockFov", {Title = "Show Fov", Default = false})
 Tabs.Rage:AddSlider("CamLockFovSize", {Title = "Fov Size", Min = 50, Max = 800, Default = 150, Rounding = 0})
 Tabs.Rage:AddSlider("CamLockRange", {Title = "Range", Min = 10, Max = 500, Default = 250, Rounding = 0})
 Tabs.Rage:AddSlider("CamLockSmoothness", {Title = "Smoothness", Min = 0, Max = 100, Default = 25, Rounding = 0})
 
 -- TWEEN
-Tabs.Tween:AddKeybind("TweenKey", {
-    Title = "Toggle Tween",
-    Mode = "Toggle",
-    Default = "",
-    Callback = function(Value)
-        if Value then Target = getTarget() startTweenLoop()
-        else if TweenConnection then TweenConnection:Disconnect() end Target = nil end
-    end
-})
+Tabs.Tween:AddKeybind("TweenKey", { Title = "Toggle Tween", Mode = "Toggle", Default = "", Callback = function(Value) if Value then Target = getTarget() startTweenLoop() else if TweenConnection then TweenConnection:Disconnect() end Target = nil end end })
 Tabs.Tween:AddToggle("ShowFOV", {Title = "Show Fov", Default = false})
 Tabs.Tween:AddSlider("FOVRadius", {Title = "Fov Size", Min = 50, Max = 500, Default = 150, Rounding = 0})
 Tabs.Tween:AddSlider("TweenRange", {Title = "Range", Min = 10, Max = 500, Default = 250, Rounding = 0})
@@ -310,11 +364,28 @@ Tabs.Tween:AddSlider("Speed", {Title = "Speed", Min = 5, Max = 200, Default = 60
 Tabs.Tween:AddSlider("Height", {Title = "Height", Min = -5, Max = 10, Default = 3.5, Rounding = 1})
 Tabs.Tween:AddSlider("Offset", {Title = "Offset", Min = -5, Max = 5, Default = 0.2, Rounding = 1})
 
--- RESTANTE
+-- AUTO QTEs
 Tabs.AutoQTE:AddToggle("Nanami_Tgl", {Title = "Auto Nanami", Default = false}):OnChanged(function(v) status_nanami = v end)
 Tabs.AutoQTE:AddToggle("Koku_Tgl", {Title = "Auto Kokushibo", Default = false}):OnChanged(function(v) status_kokushibo = v end)
 Tabs.AutoQTE:AddToggle("Camera_Tgl", {Title = "Auto Camera Timing", Default = false}):OnChanged(function(v) status_camera = v end)
+
+-- ESP
 Tabs.Esp:AddToggle("EspModeTgl", {Title = "Show Mode %", Default = false}):OnChanged(function(v) status_esp_mode = v end)
+Tabs.Esp:AddToggle("EspBarTgl", {Title = "Show Mode Bar", Default = false}):OnChanged(function(v) 
+    status_bar_mode = v 
+    if v then
+        for _, child in pairs(Workspace.Live:GetChildren()) do task.spawn(criarBarraEstiloFinal, child) end
+    else
+        for _, child in pairs(Workspace.Live:GetChildren()) do
+            local hrp = child:FindFirstChild("HumanoidRootPart")
+            if hrp then local b = hrp:FindFirstChild("ModeBar_Refined") if b then b:Destroy() end end
+        end
+    end
+end)
+
+Workspace.Live.ChildAdded:Connect(function(child)
+    if status_bar_mode then task.wait(0.5) criarBarraEstiloFinal(child) end
+end)
 
 -- LOOP RENDER
 RunService.RenderStepped:Connect(function()
@@ -323,30 +394,21 @@ RunService.RenderStepped:Connect(function()
         FOVCircle.Radius = Options.FOVRadius.Value
         FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     end
-    
     if Options.ShowCamLockFov then
         CamLockFOVCircle.Visible = Options.ShowCamLockFov.Value
         CamLockFOVCircle.Radius = Options.CamLockFovSize.Value
         CamLockFOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     end
-
     if cam_lock_enabled then
-        if not CamLockTarget or not CamLockTarget.Parent or (CamLockTarget:FindFirstChild("Humanoid") and CamLockTarget.Humanoid.Health <= 0) then
-            CamLockTarget = getCamLockTarget()
-        end
+        if not CamLockTarget or not CamLockTarget.Parent or (CamLockTarget:FindFirstChild("Humanoid") and CamLockTarget.Humanoid.Health <= 0) then CamLockTarget = getCamLockTarget() end
         if CamLockTarget and CamLockTarget:FindFirstChild("HumanoidRootPart") then
             local rawSmooth = Options.CamLockSmoothness.Value
-            
-            -- LÓGICA EXPONENCIAL: Distribuindo o smooth de forma natural de 0 a 100
             local alpha = math.pow(0.5, rawSmooth / 15)
             alpha = math.clamp(alpha, 0.005, 1) 
-            
             local targetCF = CFrame.lookAt(Camera.CFrame.Position, CamLockTarget.HumanoidRootPart.Position)
             Camera.CFrame = Camera.CFrame:Lerp(targetCF, alpha)
         end
-    else
-        CamLockTarget = nil
-    end
+    else CamLockTarget = nil end
 end)
 
 SaveManager:SetLibrary(Fluent)
@@ -355,4 +417,3 @@ InterfaceManager:BuildInterfaceSection(Tabs.Settings)
 SaveManager:BuildConfigSection(Tabs.Settings)
 Window:SelectTab(1)
 SaveManager:LoadAutoloadConfig()
-
