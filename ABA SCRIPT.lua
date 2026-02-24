@@ -2,202 +2,259 @@ local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
 local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
 
--- Serviços
+-- Services & Locals
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local Workspace = game:GetService("Workspace")
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-local Camera = Workspace.CurrentCamera
+local UIS = game:GetService("UserInputService")
+local VIM = game:GetService("VirtualInputManager")
+local WS = game:GetService("Workspace")
+local LP = Players.LocalPlayer
+local PlayerGui = LP:WaitForChild("PlayerGui")
+local Camera = WS.CurrentCamera
 
--- Janela Principal
+-- Localized globals
+local V2, V3 = Vector2.new, Vector3.new
+local min, max, floor, clamp, huge, pow, fmt = math.min, math.max, math.floor, math.clamp, math.huge, math.pow, string.format
+local insert = table.insert
+local SIGNS = {V3(-1,-1,-1),V3(-1,-1,1),V3(-1,1,-1),V3(-1,1,1),V3(1,-1,-1),V3(1,-1,1),V3(1,1,-1),V3(1,1,1)}
+
+-- Window
 local Window = Fluent:CreateWindow({
-    Title = "ABA Helper",
-    SubTitle = "by josepi",
-    TabWidth = 160,
-    Size = UDim2.fromOffset(580, 460),
-    Acrylic = true,
-    Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.LeftControl
+    Title = "ABA Helper", SubTitle = "by josepi",
+    TabWidth = 160, Size = UDim2.fromOffset(580, 460),
+    Acrylic = true, Theme = "Dark", MinimizeKey = Enum.KeyCode.LeftControl
 })
 
 local Tabs = {
-    Tween = Window:AddTab({ Title = "Tween", Icon = "target" }),
-    Rage = Window:AddTab({ Title = "Rage", Icon = "swords" }),
-    AutoQTE = Window:AddTab({ Title = "Auto QTE", Icon = "activity" }),
-    Esp = Window:AddTab({ Title = "Esp", Icon = "eye" }),
-    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
+    Tween   = Window:AddTab({ Title = "Tween",    Icon = "target" }),
+    Rage    = Window:AddTab({ Title = "Rage",      Icon = "swords" }),
+    AutoQTE = Window:AddTab({ Title = "Auto QTE",  Icon = "activity" }),
+    Esp     = Window:AddTab({ Title = "Esp",       Icon = "eye" }),
+    Settings= Window:AddTab({ Title = "Settings",  Icon = "settings" })
 }
 
 local Options = Fluent.Options
 
--- Variáveis de controle
-local status_nanami = false
-local status_camera = false
-local status_kokushibo = false
-local status_esp_mode = false
-local status_bar_mode = false
-local cam_lock_enabled = false
-local camera_lock_timing = false
-local Target = nil
-local CamLockTarget = nil
-local TweenConnection = nil
+-- State
+local status_nanami, status_camera, status_kokushibo = false, false, false
+local status_esp = false
+local status_esp_box = false
+local status_esp_name = false
+local status_esp_hpbar = false
+local status_esp_modebar = false
+local status_esp_modepct = false
+local cam_lock_enabled, camera_lock_timing = false, false
+local Target, CamLockTarget, TweenConnection = nil, nil, nil
 
--- Círculos de FOV
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Thickness = 1
-FOVCircle.NumSides = 64
-FOVCircle.Filled = false
-FOVCircle.Transparency = 0.5
-FOVCircle.Color = Color3.fromRGB(255, 255, 255)
-
-local CamLockFOVCircle = Drawing.new("Circle")
-CamLockFOVCircle.Thickness = 1
-CamLockFOVCircle.NumSides = 64
-CamLockFOVCircle.Transparency = 0.5
-CamLockFOVCircle.Color = Color3.fromRGB(255, 50, 50)
+-- FOV Circles
+local function mkCircle(color)
+    local c = Drawing.new("Circle")
+    c.Thickness = 1; c.NumSides = 64; c.Filled = false; c.Transparency = 0.5; c.Color = color
+    return c
+end
+local FOVCircle = mkCircle(Color3.new(1,1,1))
+local CamLockFOVCircle = mkCircle(Color3.fromRGB(255,50,50))
 
 -- ============================================================================
---                   LÓGICA DA BARRA (FIXED SIZE & OFFSET)
+--                         BOX ESP + CHARGE BAR
 -- ============================================================================
 
-local function criarBarraEstiloFinal(model)
-    if not status_bar_mode then return end
-    local player = Players:GetPlayerFromCharacter(model)
-    if not player or player == LocalPlayer then return end
-    local root = model:WaitForChild("HumanoidRootPart", 10)
-    if not root or root:FindFirstChild("ModeBar_Refined") then return end
+local ESP_COL        = Color3.new(1,1,1)
+local ESP_THICK      = 1.5
+local BAR_T          = 6       -- bar thickness (same for both)
+local BAR_GAP        = 3       -- gap between box and bar
+local TXT_GAP        = 2
+local HP_COL         = Color3.fromRGB(0,200,80)
+local MODE_COL       = Color3.fromRGB(255,50,50)
+local BAR_BG_COL     = Color3.fromRGB(40,40,40)
+local DIV_COL        = Color3.fromRGB(20,20,20)
+local espCache = {}
 
-    local bill = Instance.new("BillboardGui", root)
-    bill.Name = "ModeBar_Refined"
-    bill.Size = UDim2.new(0, 130, 0, 12)
-    bill.StudsOffset = Vector3.new(0, -3.8, 0)
-    bill.AlwaysOnTop = true
-    bill.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-    local mainFrame = Instance.new("Frame", bill)
-    mainFrame.Size = UDim2.new(1, 0, 1, 0)
-    mainFrame.BackgroundTransparency = 1 
-    mainFrame.ZIndex = 1 
-    
-    local stroke = Instance.new("UIStroke", mainFrame)
-    stroke.Thickness = 2
-    stroke.Color = Color3.fromRGB(20, 20, 20)
-
-    local fillContainer = Instance.new("Frame", mainFrame)
-    fillContainer.Size = UDim2.new(0, 0, 1, 0)
-    fillContainer.BackgroundTransparency = 1
-    fillContainer.ClipsDescendants = true
-    fillContainer.ZIndex = 1
-
-    local topFill = Instance.new("Frame", fillContainer)
-    topFill.Size = UDim2.new(0, 130, 0.65, 0)
-    topFill.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-    topFill.BorderSizePixel = 0
-
-    local bottomFill = Instance.new("Frame", fillContainer)
-    bottomFill.Size = UDim2.new(0, 130, 0.35, 0)
-    bottomFill.Position = UDim2.new(0, 0, 0.65, 0)
-    bottomFill.BackgroundColor3 = Color3.fromRGB(130, 20, 40)
-    bottomFill.BorderSizePixel = 0
-
-    for i = 1, 9 do
-        local lineWidth = 1.5
-        local divGroup = Instance.new("Frame", mainFrame)
-        divGroup.Size = UDim2.new(0, lineWidth, 0.88, 0) 
-        divGroup.Position = UDim2.new(i * 0.1, -(lineWidth/2), 0.06, 0)
-        divGroup.BackgroundTransparency = 1
-        divGroup.ZIndex = 2
-        local b1 = Instance.new("Frame", divGroup); b1.Size = UDim2.new(1, 0, 0.15, 0); b1.BackgroundColor3 = Color3.fromRGB(25, 25, 25); b1.BorderSizePixel = 0
-        local b2 = Instance.new("Frame", divGroup); b2.Size = UDim2.new(1, 0, 0.6, 0); b2.Position = UDim2.new(0, 0, 0.2, 0); b2.BackgroundColor3 = Color3.fromRGB(25, 25, 25); b2.BorderSizePixel = 0
-        local b3 = Instance.new("Frame", divGroup); b3.Size = UDim2.new(1, 0, 0.15, 0); b3.Position = UDim2.new(0, 0, 0.85, 0); b3.BackgroundColor3 = Color3.fromRGB(25, 25, 25); b3.BorderSizePixel = 0
-    end
-
-    local chargeValue = player:WaitForChild("Charge", 10)
-    local function atualizar()
-        if chargeValue and bill.Parent then
-            local maxCharge = (chargeValue.Value > 100) and 325 or 100
-            local percent = math.clamp(chargeValue.Value / maxCharge, 0, 1)
-            fillContainer:TweenSize(UDim2.new(percent, 0, 1, 0), "Out", "Quad", 0.3, true)
-        end
-    end
-    if chargeValue then chargeValue.Changed:Connect(atualizar) atualizar() end
+local function mkDraw(t, props)
+    local d = Drawing.new(t)
+    for k,v in pairs(props) do d[k] = v end
+    return d
 end
 
--- ============================================================================
---                   LÓGICA ESP MODO (NÚMERO %)
--- ============================================================================
+local function mkBar(fillCol)
+    return {
+        bg   = mkDraw("Square",{Color=BAR_BG_COL,Filled=true,Transparency=0.5,Visible=false}),
+        fill = mkDraw("Square",{Color=fillCol,Filled=true,Transparency=0.8,Visible=false}),
+        out  = mkDraw("Square",{Color=Color3.new(0,0,0),Thickness=1,Filled=false,Visible=false}),
+        d1   = mkDraw("Line",{Color=DIV_COL,Thickness=1,Visible=false}),
+        d2   = mkDraw("Line",{Color=DIV_COL,Thickness=1,Visible=false}),
+        d3   = mkDraw("Line",{Color=DIV_COL,Thickness=1,Visible=false}),
+    }
+end
 
-local function criarEspModo(player)
-    if player == LocalPlayer then return end
-    local function setupGui(character)
-        local root = character:WaitForChild("HumanoidRootPart", 10)
-        if not root then return end
-        local bill = Instance.new("BillboardGui", root)
-        bill.Name = "ModeEsp_Josepi"
-        bill.Size = UDim2.new(0, 100, 0, 40)
-        bill.StudsOffset = Vector3.new(0, -5.2, 0) -- Abaixo da barra
-        bill.AlwaysOnTop = true
-        bill.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-        
-        local label = Instance.new("TextLabel", bill)
-        label.BackgroundTransparency = 1
-        label.Size = UDim2.new(1, 0, 1, 0)
-        label.Font = Enum.Font.SourceSansBold
-        label.TextSize = 22
-        label.TextColor3 = Color3.fromRGB(255, 255, 255)
-        label.TextStrokeTransparency = 0
-        label.ZIndex = 5
+local function getEspCache(m)
+    local d = espCache[m]; if d then return d end
+    d = {
+        box  = mkDraw("Square",{Color=ESP_COL,Thickness=ESP_THICK,Filled=false,Visible=false}),
+        name = mkDraw("Text",{Color=ESP_COL,Size=14,Font=0,Center=true,Outline=true,Visible=false}),
+        pct  = mkDraw("Text",{Color=Color3.new(1,1,1),Size=17,Font=0,Center=true,Outline=true,Visible=false}),
+        hp   = mkBar(HP_COL),
+        mode = mkBar(MODE_COL),
+    }
+    espCache[m] = d; return d
+end
 
-        local chargeValue = player:WaitForChild("Charge", 10)
-        local maxChargeDetectado = 325
-        local function atualizar()
-            bill.Enabled = status_esp_mode
-            if chargeValue and status_esp_mode then
-                if chargeValue.Value > maxChargeDetectado then maxChargeDetectado = chargeValue.Value end
-                local percent = math.floor((chargeValue.Value / maxChargeDetectado) * 100)
-                label.Text = percent .. "%"
-                label.TextColor3 = percent >= 90 and Color3.fromRGB(255, 50, 50) or Color3.fromRGB(255, 255, 255)
+local function removeBar(b)
+    b.bg:Remove(); b.fill:Remove(); b.out:Remove(); b.d1:Remove(); b.d2:Remove(); b.d3:Remove()
+end
+
+local function cleanEsp(k)
+    local d = espCache[k]; if not d then return end
+    d.box:Remove(); d.name:Remove(); d.pct:Remove()
+    removeBar(d.hp); removeBar(d.mode)
+    espCache[k] = nil
+end
+
+local function hideBar(b)
+    b.bg.Visible,b.fill.Visible,b.out.Visible,b.d1.Visible,b.d2.Visible,b.d3.Visible = false,false,false,false,false,false
+end
+
+local function hideEsp(d)
+    d.box.Visible,d.name.Visible,d.pct.Visible = false,false,false
+    hideBar(d.hp); hideBar(d.mode)
+end
+
+-- Draw a vertical bar (fills bottom-to-top)
+local function drawVBar(b, x, y, w, h, pct)
+    b.bg.Size,b.bg.Position,b.bg.Visible = V2(w,h),V2(x,y),true
+    b.out.Size,b.out.Position,b.out.Visible = V2(w,h),V2(x,y),true
+    local fh = h * pct; if fh < 1 then fh = 1 end
+    b.fill.Size,b.fill.Position,b.fill.Visible = V2(w,fh),V2(x, y + h - fh),true
+    -- 3 dividers at 25%, 50%, 75%
+    for i,div in ipairs({b.d1,b.d2,b.d3}) do
+        local dy = y + h * (i * 0.25)
+        div.From,div.To,div.Visible = V2(x,dy),V2(x+w,dy),true
+    end
+end
+
+-- Draw a horizontal bar (fills left-to-right)
+local function drawHBar(b, x, y, w, h, pct)
+    b.bg.Size,b.bg.Position,b.bg.Visible = V2(w,h),V2(x,y),true
+    b.out.Size,b.out.Position,b.out.Visible = V2(w,h),V2(x,y),true
+    local fw = w * pct; if fw < 1 then fw = 1 end
+    b.fill.Size,b.fill.Position,b.fill.Visible = V2(fw,h),V2(x,y),true
+    -- 3 dividers at 25%, 50%, 75%
+    for i,div in ipairs({b.d1,b.d2,b.d3}) do
+        local dx = x + w * (i * 0.25)
+        div.From,div.To,div.Visible = V2(dx,y),V2(dx,y+h),true
+    end
+end
+
+local function bbox(model)
+    local mnX,mnY,mxX,mxY = huge,huge,-huge,-huge
+    local found = false
+    for _,v in ipairs(model:GetChildren()) do
+        if v:IsA("BasePart") then
+            found = true
+            local cf,sz = v.CFrame, v.Size*0.5
+            for i=1,8 do
+                local s = SIGNS[i]
+                local sp,on = Camera:WorldToViewportPoint(cf*V3(s.X*sz.X,s.Y*sz.Y,s.Z*sz.Z))
+                if not on then return nil end
+                local x,y = sp.X,sp.Y
+                if x<mnX then mnX=x end; if y<mnY then mnY=y end
+                if x>mxX then mxX=x end; if y>mxY then mxY=y end
             end
         end
-        if chargeValue then chargeValue.Changed:Connect(atualizar) end
-        local conn; conn = RunService.RenderStepped:Connect(function()
-            if character.Parent and root.Parent then atualizar() else bill:Destroy() conn:Disconnect() end
-        end)
     end
-    player.CharacterAdded:Connect(setupGui)
-    if player.Character then setupGui(player.Character) end
+    return found and mnX or nil, mnY, mxX, mxY
 end
-for _, p in pairs(Players:GetPlayers()) do criarEspModo(p) end
-Players.PlayerAdded:Connect(criarEspModo)
+
+-- Player map (reused by ESP + targeting)
+local pMap = {}
+local function rebuildPlayerMap()
+    for k in pairs(pMap) do pMap[k] = nil end
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p ~= LP and p.Character then pMap[p.Character] = p end
+    end
+end
 
 -- ============================================================================
---                   AUTO QTEs (RESTORED)
+--                         SHARED TARGET FINDER
+-- ============================================================================
+
+local function findClosestTarget(fovRadius, range)
+    local vp = Camera.ViewportSize
+    local center = V2(vp.X * 0.5, vp.Y * 0.5)
+    local myHrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+    local best, bestScore = nil, huge
+
+    -- Iterate player characters from pMap (already built)
+    for char, _ in pairs(pMap) do
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hum and hrp and hum.Health > 0 then
+            local distMe = myHrp and (hrp.Position - myHrp.Position).Magnitude or 0
+            if distMe <= range then
+                local sp, on = Camera:WorldToViewportPoint(hrp.Position)
+                if on then
+                    local distCenter = (V2(sp.X, sp.Y) - center).Magnitude
+                    if distCenter <= fovRadius then
+                        local score = distCenter + distMe * 0.5
+                        if score < bestScore then bestScore = score; best = char end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Also check NPCs in workspace.Live
+    local live = WS:FindFirstChild("Live")
+    if live then
+        local lc = LP.Character
+        for _, npc in ipairs(live:GetChildren()) do
+            if npc:IsA("Model") and npc ~= lc and not pMap[npc] then
+                local hum = npc:FindFirstChildOfClass("Humanoid")
+                local hrp = npc:FindFirstChild("HumanoidRootPart")
+                if hum and hrp and hum.Health > 0 then
+                    local distMe = myHrp and (hrp.Position - myHrp.Position).Magnitude or 0
+                    if distMe <= range then
+                        local sp, on = Camera:WorldToViewportPoint(hrp.Position)
+                        if on then
+                            local distCenter = (V2(sp.X, sp.Y) - center).Magnitude
+                            if distCenter <= fovRadius then
+                                local score = distCenter + distMe * 0.5
+                                if score < bestScore then bestScore = score; best = npc end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return best
+end
+
+-- ============================================================================
+--                              AUTO QTEs
 -- ============================================================================
 
 local function clicarM1()
-    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+    VIM:SendMouseButtonEvent(0,0,0,true,game,0)
     task.wait(0.01)
-    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+    VIM:SendMouseButtonEvent(0,0,0,false,game,0)
 end
 
 local function clicarM2()
-    VirtualInputManager:SendMouseButtonEvent(0, 0, 1, true, game, 0)
-    task.wait(0.05) 
-    VirtualInputManager:SendMouseButtonEvent(0, 0, 1, false, game, 0)
+    VIM:SendMouseButtonEvent(0,0,1,true,game,0)
+    task.wait(0.05)
+    VIM:SendMouseButtonEvent(0,0,1,false,game,0)
 end
 
 local function processarKokushibo(gui)
-    local jaClicou = false
+    local done = false
     local function checar(obj)
-        if status_kokushibo and obj.Name == "ImageLabel" and not jaClicou then
-            jaClicou = true
-            task.wait(0.30)
-            clicarM2()
+        if status_kokushibo and obj.Name == "ImageLabel" and not done then
+            done = true; task.wait(0.30); clicarM2()
         end
     end
-    for _, desc in pairs(gui:GetDescendants()) do checar(desc) end
+    for _, d in ipairs(gui:GetDescendants()) do checar(d) end
     local conn = gui.DescendantAdded:Connect(checar)
     gui.AncestryChanged:Connect(function() if not gui.Parent and conn then conn:Disconnect() end end)
 end
@@ -210,10 +267,7 @@ Camera:GetPropertyChangedSignal("FieldOfView"):Connect(function()
     if not status_camera then camera_lock_timing = false return end
     local fov = Camera.FieldOfView
     if fov <= 10 then camera_lock_timing = true end
-    if camera_lock_timing and fov >= 15 then
-        camera_lock_timing = false
-        clicarM1()
-    end
+    if camera_lock_timing and fov >= 15 then camera_lock_timing = false; clicarM1() end
 end)
 
 local function handleNanami(gui)
@@ -222,141 +276,67 @@ local function handleNanami(gui)
     local c = bar and bar:WaitForChild("Cutter", 5)
     if not g or not c then return end
     task.wait(0.2)
-    local connection
-    connection = RunService.Heartbeat:Connect(function()
-        if not status_nanami or not gui.Parent then connection:Disconnect() return end
-        local gpos = g.AbsolutePosition.X + (g.AbsoluteSize.X / 2)
-        local cpos = c.AbsolutePosition.X
-        if cpos > 10 and cpos >= gpos + 1 then
-            clicarM1()
-            connection:Disconnect()
+    local conn; conn = RunService.Heartbeat:Connect(function()
+        if not status_nanami or not gui.Parent then conn:Disconnect() return end
+        if c.AbsolutePosition.X > 10 and c.AbsolutePosition.X >= g.AbsolutePosition.X + g.AbsoluteSize.X * 0.5 + 1 then
+            clicarM1(); conn:Disconnect()
         end
     end)
 end
 
-Workspace.Live.DescendantAdded:Connect(function(obj)
+WS.Live.DescendantAdded:Connect(function(obj)
     if obj.Name == "NanamiCutGUI" and status_nanami then handleNanami(obj) end
 end)
 
 -- ============================================================================
---                   SISTEMAS TWEEN & RAGE (RESTORED)
+--                            TWEEN SYSTEM
 -- ============================================================================
-
-local function getTarget()
-    local closestTarget = nil
-    local shortestDistance = math.huge
-    local mousePos = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    local potentialTargets = {}
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then table.insert(potentialTargets, p.Character) end
-    end
-    local liveFolder = Workspace:FindFirstChild("Live")
-    if liveFolder then
-        for _, npc in pairs(liveFolder:GetChildren()) do
-            if npc:IsA("Model") and npc ~= LocalPlayer.Character then table.insert(potentialTargets, npc) end
-        end
-    end
-    local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    for _, char in pairs(potentialTargets) do
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if char ~= LocalPlayer.Character and hum and hrp and hum.Health > 0 then
-            local distFromMe = myHrp and (hrp.Position - myHrp.Position).Magnitude or 0
-            if distFromMe <= (Options.TweenRange and Options.TweenRange.Value or 500) then
-                local screenPos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
-                if onScreen then
-                    local distFromCenter = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                    if distFromCenter <= (Options.FOVRadius and Options.FOVRadius.Value or 150) then
-                        local score = distFromCenter + (distFromMe * 0.5)
-                        if score < shortestDistance then
-                            shortestDistance = score
-                            closestTarget = char
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return closestTarget
-end
 
 local function startTweenLoop()
     if TweenConnection then TweenConnection:Disconnect() end
     TweenConnection = RunService.Heartbeat:Connect(function(dt)
         if not Options.TweenKey.Value then return end
-        local char = LocalPlayer.Character
+        local char = LP.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
         if Target then
             local hum = Target:FindFirstChildOfClass("Humanoid")
             if not Target.Parent or (hum and hum.Health <= 0) then
-                Target = nil
-                Options.TweenKey:SetValue(false)
-                return
+                Target = nil; Options.TweenKey:SetValue(false); return
             end
         else
-            Target = getTarget()
+            Target = findClosestTarget(Options.FOVRadius and Options.FOVRadius.Value or 150, Options.TweenRange and Options.TweenRange.Value or 500)
             if not Target then return end
         end
         local head = Target:FindFirstChild("Head") or Target:FindFirstChild("HumanoidRootPart")
         if not head then return end
-        local desired = head.Position + Vector3.new(0, Options.Height.Value, 0) + head.CFrame.LookVector * Options.Offset.Value
+        local desired = head.Position + V3(0, Options.Height.Value, 0) + head.CFrame.LookVector * Options.Offset.Value
         local delta = desired - hrp.Position
         local dist = delta.Magnitude
         if dist < 0.1 then return end
-        local step = math.min(dist, Options.Speed.Value * dt * 1.05)
-        hrp.CFrame = hrp.CFrame + delta.Unit * step
+        hrp.CFrame = hrp.CFrame + delta.Unit * min(dist, Options.Speed.Value * dt * 1.05)
     end)
 end
 
-local function getCamLockTarget()
-    local closestTarget = nil
-    local shortestDistance = math.huge
-    local mousePos = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    local potentialTargets = {}
-    for _, p in pairs(Players:GetPlayers()) do 
-        if p ~= LocalPlayer and p.Character then table.insert(potentialTargets, p.Character) end 
-    end
-    local live = Workspace:FindFirstChild("Live")
-    if live then 
-        for _, npc in pairs(live:GetChildren()) do 
-            if npc:IsA("Model") and npc ~= LocalPlayer.Character then table.insert(potentialTargets, npc) end 
-        end 
-    end
-    local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    for _, char in pairs(potentialTargets) do
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if char ~= LocalPlayer.Character and hum and hrp and hum.Health > 0 then
-            local distFromMe = myHrp and (hrp.Position - myHrp.Position).Magnitude or 0
-            if distFromMe <= Options.CamLockRange.Value then
-                local screenPos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
-                if onScreen then
-                    local distFromCenter = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                    if distFromCenter <= Options.CamLockFovSize.Value then
-                        local score = distFromCenter + (distFromMe * 0.5)
-                        if score < shortestDistance then shortestDistance = score; closestTarget = char end
-                    end
-                end
-            end
-        end
-    end
-    return closestTarget
-end
-
 -- ============================================================================
---                                INTERFACE (FLUENT)
+--                           INTERFACE (FLUENT)
 -- ============================================================================
 
 -- RAGE
-Tabs.Rage:AddKeybind("CamLockBind", { Title = "Camera Lock Keybind", Mode = "Toggle", Default = "", Callback = function(Value) cam_lock_enabled = Value end })
+Tabs.Rage:AddKeybind("CamLockBind", {Title = "Camera Lock Keybind", Mode = "Toggle", Default = "", Callback = function(v)
+    cam_lock_enabled = v
+    UIS.MouseDeltaSensitivity = v and 0 or 1
+end})
 Tabs.Rage:AddToggle("ShowCamLockFov", {Title = "Show Fov", Default = false})
 Tabs.Rage:AddSlider("CamLockFovSize", {Title = "Fov Size", Min = 50, Max = 800, Default = 150, Rounding = 0})
 Tabs.Rage:AddSlider("CamLockRange", {Title = "Range", Min = 10, Max = 500, Default = 250, Rounding = 0})
 Tabs.Rage:AddSlider("CamLockSmoothness", {Title = "Smoothness", Min = 0, Max = 100, Default = 25, Rounding = 0})
 
 -- TWEEN
-Tabs.Tween:AddKeybind("TweenKey", { Title = "Toggle Tween", Mode = "Toggle", Default = "", Callback = function(Value) if Value then Target = getTarget() startTweenLoop() else if TweenConnection then TweenConnection:Disconnect() end Target = nil end end })
+Tabs.Tween:AddKeybind("TweenKey", {Title = "Toggle Tween", Mode = "Toggle", Default = "", Callback = function(v)
+    if v then Target = findClosestTarget(Options.FOVRadius and Options.FOVRadius.Value or 150, Options.TweenRange and Options.TweenRange.Value or 500); startTweenLoop()
+    else if TweenConnection then TweenConnection:Disconnect() end; Target = nil end
+end})
 Tabs.Tween:AddToggle("ShowFOV", {Title = "Show Fov", Default = false})
 Tabs.Tween:AddSlider("FOVRadius", {Title = "Fov Size", Min = 50, Max = 500, Default = 150, Rounding = 0})
 Tabs.Tween:AddSlider("TweenRange", {Title = "Range", Min = 10, Max = 500, Default = 250, Rounding = 0})
@@ -370,45 +350,134 @@ Tabs.AutoQTE:AddToggle("Koku_Tgl", {Title = "Auto Kokushibo", Default = false}):
 Tabs.AutoQTE:AddToggle("Camera_Tgl", {Title = "Auto Camera Timing", Default = false}):OnChanged(function(v) status_camera = v end)
 
 -- ESP
-Tabs.Esp:AddToggle("EspModeTgl", {Title = "Show Mode %", Default = false}):OnChanged(function(v) status_esp_mode = v end)
-Tabs.Esp:AddToggle("EspBarTgl", {Title = "Show Mode Bar", Default = false}):OnChanged(function(v) 
-    status_bar_mode = v 
-    if v then
-        for _, child in pairs(Workspace.Live:GetChildren()) do task.spawn(criarBarraEstiloFinal, child) end
-    else
-        for _, child in pairs(Workspace.Live:GetChildren()) do
-            local hrp = child:FindFirstChild("HumanoidRootPart")
-            if hrp then local b = hrp:FindFirstChild("ModeBar_Refined") if b then b:Destroy() end end
-        end
-    end
+Tabs.Esp:AddToggle("EspMasterTgl", {Title = "Enable ESP", Default = false}):OnChanged(function(v)
+    status_esp = v
+    if not v then for _,d in pairs(espCache) do hideEsp(d) end end
+end)
+Tabs.Esp:AddToggle("EspBoxTgl", {Title = "Box", Default = false}):OnChanged(function(v)
+    status_esp_box = v
+    if not v then for _,d in pairs(espCache) do d.box.Visible = false end end
+end)
+Tabs.Esp:AddToggle("EspNameTgl", {Title = "Name", Default = false}):OnChanged(function(v)
+    status_esp_name = v
+    if not v then for _,d in pairs(espCache) do d.name.Visible = false end end
+end)
+Tabs.Esp:AddToggle("EspHpTgl", {Title = "HP Bar", Default = false}):OnChanged(function(v)
+    status_esp_hpbar = v
+    if not v then for _,d in pairs(espCache) do hideBar(d.hp) end end
+end)
+Tabs.Esp:AddToggle("EspModeTgl", {Title = "Mode Bar", Default = false}):OnChanged(function(v)
+    status_esp_modebar = v
+    if not v then for _,d in pairs(espCache) do hideBar(d.mode) end end
+end)
+Tabs.Esp:AddToggle("EspModePctTgl", {Title = "Mode %", Default = false}):OnChanged(function(v)
+    status_esp_modepct = v
+    if not v then for _,d in pairs(espCache) do d.pct.Visible = false end end
 end)
 
-Workspace.Live.ChildAdded:Connect(function(child)
-    if status_bar_mode then task.wait(0.5) criarBarraEstiloFinal(child) end
-end)
+-- ============================================================================
+--                          MAIN RENDER LOOP
+-- ============================================================================
 
--- LOOP RENDER
 RunService.RenderStepped:Connect(function()
+    -- Rebuild player map once per frame (shared by ESP + cam lock + tween)
+    rebuildPlayerMap()
+
+    -- Viewport center (cached once per frame)
+    local vp = Camera.ViewportSize
+    local vpCenter = V2(vp.X * 0.5, vp.Y * 0.5)
+
+    -- FOV circles
     if Options.ShowFOV then
         FOVCircle.Visible = Options.ShowFOV.Value
         FOVCircle.Radius = Options.FOVRadius.Value
-        FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        FOVCircle.Position = vpCenter
     end
     if Options.ShowCamLockFov then
         CamLockFOVCircle.Visible = Options.ShowCamLockFov.Value
         CamLockFOVCircle.Radius = Options.CamLockFovSize.Value
-        CamLockFOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        CamLockFOVCircle.Position = vpCenter
     end
+
+    -- Camera lock
     if cam_lock_enabled then
-        if not CamLockTarget or not CamLockTarget.Parent or (CamLockTarget:FindFirstChild("Humanoid") and CamLockTarget.Humanoid.Health <= 0) then CamLockTarget = getCamLockTarget() end
-        if CamLockTarget and CamLockTarget:FindFirstChild("HumanoidRootPart") then
-            local rawSmooth = Options.CamLockSmoothness.Value
-            local alpha = math.pow(0.5, rawSmooth / 15)
-            alpha = math.clamp(alpha, 0.005, 1) 
-            local targetCF = CFrame.lookAt(Camera.CFrame.Position, CamLockTarget.HumanoidRootPart.Position)
-            Camera.CFrame = Camera.CFrame:Lerp(targetCF, alpha)
+        if not CamLockTarget or not CamLockTarget.Parent or (CamLockTarget:FindFirstChild("Humanoid") and CamLockTarget.Humanoid.Health <= 0) then
+            CamLockTarget = findClosestTarget(Options.CamLockFovSize.Value, Options.CamLockRange.Value)
+        end
+        if CamLockTarget then
+            local hrp = CamLockTarget:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local alpha = clamp(pow(0.5, Options.CamLockSmoothness.Value / 15), 0.005, 1)
+                Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(Camera.CFrame.Position, hrp.Position), alpha)
+            end
         end
     else CamLockTarget = nil end
+
+    -- ESP
+    if status_esp then
+        local live = WS:FindFirstChild("Live")
+        if live then
+            local lc = LP.Character
+            local active = {}
+            for _,m in ipairs(live:GetChildren()) do
+                if m:IsA("Model") and m ~= lc and pMap[m] then
+                    active[m] = true
+                    local d = getEspCache(m)
+                    local hrp = m:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        local top, onT = Camera:WorldToViewportPoint(hrp.Position + V3(0, 2.5, 0))
+                        local bot, onB = Camera:WorldToViewportPoint(hrp.Position - V3(0, 3.0, 0))
+                    if onT and onB then
+                        local rawH = bot.Y - top.Y
+                        local padY = rawH * 0.05
+                        local h  = rawH + padY * 2
+                        local w  = h * 0.75
+                        local mid, _ = Camera:WorldToViewportPoint(hrp.Position)
+                        local cx = mid.X
+                        local adjY1 = top.Y - padY
+                        local newX1 = cx - (w * 0.5)
+
+                        -- Box
+                        if status_esp_box then
+                            d.box.Size,d.box.Position,d.box.Visible = V2(w,h),V2(newX1,adjY1),true
+                        else d.box.Visible = false end
+
+                        -- Name
+                        if status_esp_name then
+                            d.name.Text,d.name.Position,d.name.Visible = m.Name,V2(cx,adjY1-16),true
+                        else d.name.Visible = false end
+
+                        -- HP bar (vertical, left side)
+                        if status_esp_hpbar then
+                            local hum = m:FindFirstChildOfClass("Humanoid")
+                            if hum and hum.MaxHealth > 0 then
+                                local hpPct = clamp(hum.Health / hum.MaxHealth, 0, 1)
+                                drawVBar(d.hp, newX1 - BAR_T - BAR_GAP, adjY1, BAR_T, h, hpPct)
+                            else hideBar(d.hp) end
+                        else hideBar(d.hp) end
+
+                        -- Mode bar + Mode %
+                        local plr = pMap[m]
+                        local ch = plr and plr:FindFirstChild("Charge")
+                        local boxBottom = adjY1 + h
+                        if ch and ch.MaxValue > 0 then
+                            local modePct = clamp(ch.Value / ch.MaxValue, 0, 1)
+                            if status_esp_modebar then
+                                drawHBar(d.mode, newX1, boxBottom + BAR_GAP, w, BAR_T, modePct)
+                            else hideBar(d.mode) end
+                            if status_esp_modepct then
+                                d.pct.Text,d.pct.Position,d.pct.Visible = fmt("%d%%",floor(modePct*100)),V2(cx,boxBottom+BAR_GAP+BAR_T+TXT_GAP),true
+                            else d.pct.Visible = false end
+                        else
+                            hideBar(d.mode); d.pct.Visible = false
+                        end
+                    else hideEsp(d) end
+                    else hideEsp(d) end
+                end
+            end
+            for k in pairs(espCache) do if not active[k] then cleanEsp(k) end end
+        end
+    end
 end)
 
 SaveManager:SetLibrary(Fluent)
